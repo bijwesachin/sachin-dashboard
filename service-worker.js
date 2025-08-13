@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sachin-dash-v3';
+const CACHE_NAME = 'sachin-dash-v2';
 const ASSETS = [
   './',
   './index.html',
