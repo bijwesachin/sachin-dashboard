@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Sachin Dashboard — v1.9.1 (Local JSON + Econ Fallback)</title>
-<meta name="description" content="Dashboard using local earnings.json for earnings; TradingEconomics for econ with local fallback; strict 14-day window." />
+<title>Sachin Dashboard — v2.1 (Nasdaq DL + Expanded Econ)</title>
+<meta name="description" content="LIVE dashboard using Nasdaq Data Link (ZACKS/EA) for earnings and TE (with local fallback) for economic events. 14-day window." />
 <link rel="manifest" href="manifest.webmanifest" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -36,22 +36,21 @@
   .settings input{width:100%;padding:8px;border-radius:8px;border:1px solid #3b3227;background:#15110c;color:var(--text);margin-top:6px}
   .settings label{font-size:.9rem;opacity:.9}
   .banner{margin:12px 0;padding:10px;border-radius:10px;background:#21160f;border:1px dashed #5d4b33}
-  .error{color:#ffcccc}
-  /* highlight rules */
-  .hl-today{ background:#1f3b2a; border-color:#2f7a4a; }      /* light green */
-  .hl-tomorrow{ background:#3a2a15; border-color:#a86e1a; }   /* light orange */
+  .error{color:#ffcccc} .warn{color:#ffd7a8}
+  .hl-today{ background:#1f3b2a; border-color:#2f7a4a; }
+  .hl-tomorrow{ background:#3a2a15; border-color:#a86e1a; }
 </style>
 </head>
 <body>
 <header>
   <div class="title">
     <div style="font-weight:900;">Sachin Dashboard</div>
-    <span class="badge">v1.9.1 · Local earnings.json + Econ fallback · 14-day</span>
+    <span class="badge">v2.1 · Nasdaq Data Link + expanded econ · 14-day</span>
   </div>
   <div class="controls">
     <button id="toggleNextWeek">Show next week</button>
     <button id="refreshBtn">Refresh</button>
-    <button id="settingsBtn" title="Settings (econ key)">⚙️ Settings</button>
+    <button id="settingsBtn" title="Settings (keys)">⚙️ Settings</button>
   </div>
 </header>
 
@@ -60,15 +59,17 @@
 
   <div class="grid">
     <div class="card">
-      <h3>Upcoming earnings (next 14 days)</h3>
+      <h3>Earnings (next 14 days)</h3>
       <div id="upcomingList" class="chips"></div>
-      <div class="section-note">Pulled from <code>/data/earnings.json</code> (no external API). Watchlist prioritized (TSLA, AAPL, MSFT, NVDA). No links.</div>
+      <div class="section-note">
+        Source: <code>Nasdaq Data Link → ZACKS/EA</code>. Key can be set in ⚙️ or <code>/data/nasdaq_key.txt</code>. No FMP.
+      </div>
     </div>
 
     <div class="card">
       <h3>Specials (next 14 days)</h3>
       <div id="specialList" class="chips"></div>
-      <div class="section-note">Monthly OPEX &amp; VIX Settlement (AM SOQ) shown only if inside the next 14 days.</div>
+      <div class="section-note">Monthly OPEX &amp; VIX Settlement (AM SOQ) auto-computed if inside the window.</div>
     </div>
   </div>
 
@@ -83,18 +84,22 @@
   </div>
 </div>
 
-<!-- Settings (econ only) -->
+<!-- Settings -->
 <div class="settings" id="settingsPanel">
   <h4 style="margin:0 0 8px">🔧 Settings</h4>
   <div>
-    <label>TradingEconomics Key (optional)</label>
+    <label>Nasdaq Data Link API Key (for live earnings)</label>
+    <input id="nasdaqKey" placeholder="YOUR_NASDAQ_DATALINK_API_KEY">
+  </div>
+  <div style="margin-top:8px">
+    <label>TradingEconomics Key (optional, econ)</label>
     <input id="teKey" placeholder="guest:guest or your_key:your_secret">
   </div>
   <div style="display:flex;gap:8px;margin-top:10px">
     <button id="saveKeys">Save</button>
     <button id="closeSettings">Close</button>
   </div>
-  <div class="section-note">Stored locally in your browser (localStorage).</div>
+  <div class="section-note">Keys are stored locally in your browser (localStorage). You may also prefill Nasdaq key via <code>/data/nasdaq_key.txt</code> in the repo (visible publicly).</div>
 </div>
 
 <script>
@@ -143,14 +148,41 @@ function titleRange(start, end){ const opts = { month:'short', day:'numeric', ye
 document.getElementById('thisWeekTitle').textContent = `Economic events — This week (${titleRange(thisMon, thisSun)})`;
 document.getElementById('nextWeekTitle').textContent = `Economic events — Next week (${titleRange(nextMon, nextSun)})`;
 
-/* ===== Settings storage (econ only) ===== */
+/* ===== Settings storage ===== */
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsPanel = document.getElementById('settingsPanel');
 const teKeyInput  = document.getElementById('teKey');
+const nasdaqKeyInput = document.getElementById('nasdaqKey');
 document.getElementById('closeSettings').onclick = () => settingsPanel.style.display = 'none';
-settingsBtn.onclick = () => { teKeyInput.value = loadKeys().teKey || ''; settingsPanel.style.display = 'block'; };
-document.getElementById('saveKeys').onclick = () => { localStorage.setItem('sachin:teKey', teKeyInput.value.trim()); settingsPanel.style.display = 'none'; location.reload(); };
-function loadKeys(){ return { teKey: localStorage.getItem('sachin:teKey')  || '' }; }
+settingsBtn.onclick = async () => {
+  const teKey = localStorage.getItem('sachin:teKey') || '';
+  teKeyInput.value = teKey;
+  const k = await loadNasdaqKey();
+  nasdaqKeyInput.value = localStorage.getItem('sachin:nasdaqKey') || k || '';
+  settingsPanel.style.display = 'block';
+};
+document.getElementById('saveKeys').onclick = () => {
+  localStorage.setItem('sachin:teKey', teKeyInput.value.trim());
+  localStorage.setItem('sachin:nasdaqKey', nasdaqKeyInput.value.trim());
+  settingsPanel.style.display = 'none';
+  location.reload();
+};
+
+// Prefill mechanism
+const DEFAULT_NASDAQ_KEY = ""; // optionally hard-code here (visible publicly)
+async function loadNasdaqKey(){
+  // priority: localStorage > nasdaq_key.txt > DEFAULT_NASDAQ_KEY
+  const saved = (localStorage.getItem('sachin:nasdaqKey') || '').trim();
+  if (saved) return saved;
+  try{
+    const r = await fetch('./data/nasdaq_key.txt', { cache: 'no-store' });
+    if (r.ok){
+      const t = (await r.text()).trim();
+      if (t) return t;
+    }
+  }catch(e){ /* ignore */ }
+  return DEFAULT_NASDAQ_KEY;
+}
 
 /* ===== Watchlist (incl. CRWV, CSCO) ===== */
 const WATCHLIST = ["HOOD","NVDA","PLTR","AMD","AAPL","GOOG","TSLA","TSM","AVGO","MSFT","ARM","AMZN","SPXL","TQQQ","SMCI","COIN","AI","WMT","META","NFLX","COST","LOW","TGT","CRWV","CSCO"];
@@ -190,24 +222,46 @@ function within48h(dt){ const diff = dt - tzNow(); return diff >= 0 && diff <= 2
   });
 })();
 
-/* ===== Earnings: Local JSON only (no external API) ===== */
-async function fetchEarningsLocal(fromISO, toISO, tickers){
-  try{
-    const res = await fetch('./data/earnings.json', { cache: 'no-store' });
-    if(!res.ok) throw new Error('earnings.json missing');
-    const rows = await res.json();
-    const want = new Set((tickers||[]).map(s=>s.toUpperCase()));
-    return rows
-      .map(x => ({ ticker: String(x.ticker).toUpperCase(), date: x.date, kind:'Earnings' }))
-      .filter(x => want.size ? want.has(x.ticker) : true)
-      .filter(x => {
-        const d = new Date(x.date+'T00:00:00');
-        return between(d, from, to);
-      });
-  }catch(e){
-    console.warn(e);
-    return [];
+/* ===== Earnings: Nasdaq Data Link (ZACKS/EA) ===== */
+async function fetchEarningsNasdaqDL(fromISO, toISO, tickers){
+  const nasdaqKey = await loadNasdaqKey();
+  if (!nasdaqKey) throw new Error('Missing Nasdaq Data Link API key. Add it in ⚙️ or /data/nasdaq_key.txt to load live earnings.');
+  const tlist = (tickers||[]).map(s=>s.toUpperCase()).join(',');
+  const url = `https://data.nasdaq.com/api/v3/datatables/ZACKS/EA.json?ticker=${encodeURIComponent(tlist)}&qopts.per_page=1000&api_key=${encodeURIComponent(nasdaqKey)}`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('Nasdaq Data Link error: '+res.status);
+  const json = await res.json();
+  const dt = json && json.datatable;
+  if (!dt || !dt.data || !dt.columns) return [];
+
+  const cols = dt.columns.map(c => (c.name||'').toString());
+  const findCol = (preds) => {
+    const idx = cols.findIndex(name => preds.some(p => p.test(name.toLowerCase())));
+    return idx >= 0 ? idx : -1;
+  };
+  const iTicker = findCol([/^ticker$/]);
+  const iDate = findCol([/ann.*date/, /earn.*date/, /^date$/, /report.*date/]);
+  const iTime = findCol([/ann.*time/, /time/]);
+
+  if (iTicker < 0 || iDate < 0) return [];
+
+  const byTicker = new Map();
+  const today = startOfDay(tzNow());
+  for (const row of dt.data){
+    const t = String(row[iTicker] || '').toUpperCase();
+    const ds = row[iDate];
+    if (!t || !ds) continue;
+    const d = new Date(String(ds).slice(0,10)+'T00:00:00');
+    if (isNaN(+d) || d < today) continue;
+    const best = byTicker.get(t);
+    if (!best || d < best.when) byTicker.set(t, { ticker: t, when: d, date: ds, time: iTime>=0 ? row[iTime] : null });
   }
+
+  const fromD = new Date(fromISO+'T00:00:00');
+  const toD   = new Date(toISO+'T23:59:59');
+  return Array.from(byTicker.values())
+    .filter(x => between(x.when, fromD, toD))
+    .map(x => ({ ticker: x.ticker, date: String(x.date).slice(0,10), kind: 'Earnings' }));
 }
 
 /* ===== Economic Calendar: TE with local fallback ===== */
@@ -225,7 +279,8 @@ function isHighImpactUS(ev){
   return hit && isUS;
 }
 async function fetchEconTE(d1,d2){
-  const { teKey } = loadKeys(); const cred = teKey ? encodeURIComponent(teKey) : 'guest:guest';
+  const teKey = (localStorage.getItem('sachin:teKey') || '').trim();
+  const cred = teKey ? encodeURIComponent(teKey) : 'guest:guest';
   const url = `https://api.tradingeconomics.com/calendar?country=United%20States&importance=2&d1=${d1}&d2=${d2}&c=${cred}&format=json`;
   const r = await fetch(url); if (!r.ok) throw new Error('TE error:'+r.status);
   const raw = await r.json();
@@ -281,19 +336,19 @@ function renderEcon(list, mount){
   const thisWeekList = document.getElementById('thisWeekList');
   const nextWeekList = document.getElementById('nextWeekList');
 
-  // Earnings (LOCAL JSON) — watchlist only, no links
-  let earningsUsed=false, econUsed=false;
+  // Earnings (Nasdaq Data Link) — watchlist only, no links
+  let earningsUsed=false, econUsed=false, earningsWarn='';
   try{
-    const items = await fetchEarningsLocal(fromISO, toISO, WATCHLIST);
+    const items = await fetchEarningsNasdaqDL(fromISO, toISO, WATCHLIST);
     const coreOrder = { 'TSLA':0,'AAPL':1,'MSFT':2,'NVDA':3 };
     items.sort((a,b)=> (coreOrder[a.ticker] ?? 999) - (coreOrder[b.ticker] ?? 999) || (new Date(a.date)-new Date(b.date)));
     items.forEach(x => addPill(x));
     if (items.length) earningsUsed=true;
-  }catch(e){ console.warn(e); }
+    if (!items.length) earningsWarn='No earnings returned for window (check key or watchlist).';
+  }catch(e){ console.warn(e); earningsWarn = e.message; }
 
   if (upcomingEl.children.length === 0){
-    // small sample if the file is empty
-    [{ticker:'NVDA',date:fmtDateISO(addDays(now,2)),kind:'Earnings'}].forEach(addPill);
+    const pill=document.createElement('div'); pill.className='pill'; pill.textContent='⚠ Add your Nasdaq Data Link API key in ⚙️ or /data/nasdaq_key.txt to load live earnings.'; upcomingEl.appendChild(pill);
   }
 
   // ECON: merged (TE → local fallback)
@@ -306,9 +361,9 @@ function renderEcon(list, mount){
   }catch(e){ console.warn(e); }
 
   // Banner
-  const parts=[]; if(earningsUsed) parts.push('Earnings (local JSON)'); if(econUsed) parts.push('Economic calendar (TE/Local)');
-  const txt = parts.length ? `LIVE: ${parts.join(' + ')} (14-day window).` :
-    `Using local earnings and no econ found. <span class="error">Add /data/econ.json or set TE key (⚙️).</span>`;
+  const parts=[]; if(earningsUsed) parts.push('Earnings (Nasdaq Data Link: ZACKS/EA)'); if(econUsed) parts.push('Economic calendar (TE/Local)');
+  let txt = parts.length ? `LIVE: ${parts.join(' + ')} (14-day window).` : `Nothing loaded yet.`;
+  if (earningsWarn) txt += ` <span class="warn">• ${earningsWarn}</span>`;
   liveBanner.style.display='block';
   liveBanner.innerHTML = txt;
 })();
