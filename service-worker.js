@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sachin-dash-v1.9.1-localjson';
+const CACHE_NAME = 'sachin-dash-v2.1-nasdaq';
 const ASSETS = [
   './',
   './index.html',
@@ -21,14 +21,17 @@ self.addEventListener('activate', (e) => {
 });
 
 function isDynamic(url) {
-  return url.includes('/data/earnings.json') || url.includes('/data/econ.json') || url.includes('tradingeconomics.com');
+  return url.includes('/data/econ.json') ||
+         url.includes('/data/nasdaq_key.txt') ||
+         url.includes('data.nasdaq.com/api/v3/datatables/ZACKS/EA') ||
+         url.includes('tradingeconomics.com');
 }
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
   if (isDynamic(url.href)) {
-    // Network-first for live JSON and econ API
+    // Network-first for live JSON / APIs
     e.respondWith(
       fetch(e.request).then(resp => {
         const clone = resp.clone();
