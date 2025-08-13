@@ -1,10 +1,11 @@
-const CACHE_NAME = 'sachin-dash-v2';
+const CACHE_NAME = 'sachin-dash-v1.9-localjson';
 const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
   './icons/icon-180.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  // do NOT pre-cache earnings.json to avoid staleness; we’ll fetch it network-first
 ];
 
 self.addEventListener('install', (e) => {
@@ -19,15 +20,15 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
-function isApiRequest(url) {
-  return url.includes('financialmodelingprep.com') || url.includes('tradingeconomics.com');
+function isDynamic(url) {
+  return url.includes('/data/earnings.json') || url.includes('tradingeconomics.com');
 }
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
-  if (isApiRequest(url.href)) {
-    // Network-first for live data
+  if (isDynamic(url.href)) {
+    // Network-first for live JSON and econ API
     e.respondWith(
       fetch(e.request).then(resp => {
         const clone = resp.clone();
