@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sachin Dashboard — v1.6 LIVE (2-week window)</title>
+<title>Sachin Dashboard — v1.7 LIVE (2-week window)</title>
 <meta name="description" content="LIVE market dashboard with strict 14-day window for earnings, econ, and specials.">
 <style>
   :root{
@@ -22,8 +22,7 @@
   .card{background:var(--panel);padding:14px;border-radius:12px;border:1px solid #2a2620}
   h3{margin:.2rem 0 1rem;font-weight:800}
   .chips{display:flex;flex-wrap:wrap;gap:8px}
-  .pill{padding:8px 12px;border-radius:999px;background:var(--muted);border:1px solid #3b3227;display:flex;gap:10px;align-items:center;white-space:nowrap}
-  .pill a{color:var(--text);text-decoration:none;border-bottom:1px dashed #5d4b33}
+  .pill{padding:8px 12px;border-radius:999px;background:var(--muted);border:1px solid #3b3227;display:flex;gap:8px;align-items:center;white-space:nowrap}
   .pill.sales{background:var(--sales-bg);border-color:var(--sales-br)}
   .pill.highlight{background:#3a2815;border-color:var(--accent-2)}
   .ev{background:var(--muted);padding:10px;border-radius:10px;margin:8px 0;display:flex;justify-content:space-between;align-items:center;border:1px solid #3b3227}
@@ -37,9 +36,9 @@
   .banner{margin:12px 0;padding:10px;border-radius:10px;background:#21160f;border:1px dashed #5d4b33}
   .error{color:#ffcccc}
 
+  /* highlight rules you asked for */
   .hl-today{ background:#1f3b2a; border-color:#2f7a4a; }      /* light green */
   .hl-tomorrow{ background:#3a2a15; border-color:#a86e1a; }   /* light orange */
-
 </style>
 
   <!-- PWA hooks -->
@@ -48,13 +47,12 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Sachin Dashboard">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
-
 </head>
 <body>
 <header>
   <div class="title">
     <div style="font-weight:900;">Sachin Dashboard</div>
-    <span class="badge">v1.6 LIVE · 14-day</span>
+    <span class="badge">v1.7 LIVE · 14-day</span>
   </div>
   <div class="controls">
     <button id="toggleNextWeek">Show next week</button>
@@ -68,9 +66,9 @@
 
   <div class="grid">
     <div class="card">
-      <h3>Upcoming earnings & sales (next 14 days)</h3>
+      <h3>Upcoming earnings (next 14 days)</h3>
       <div id="upcomingList" class="chips"></div>
-      <div class="section-note">Strict window: today → +14 days. Core tickers prioritized (TSLA, AAPL, MSFT, NVDA, CSCO, CRWV).</div>
+      <div class="section-note">Strict window: today → +14 days. Core tickers prioritized (TSLA, AAPL, MSFT, NVDA).</div>
     </div>
 
     <div class="card">
@@ -117,7 +115,9 @@ function addDays(d, n){ return new Date(d.getFullYear(), d.getMonth(), d.getDate
 function fmtDateISO(d){ const m = String(d.getMonth()+1).padStart(2,'0'); const day = String(d.getDate()).padStart(2,'0'); return `${d.getFullYear()}-${m}-${day}`; }
 function fmtHuman(d){ return d.toLocaleString(undefined, {weekday:'short', month:'short', day:'numeric'}); }
 function fmtTime(d){ return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
-function within48h(dt){ const now = tzNow(); const diff = dt - now; return diff >= 0 && diff <= 2*DAY; }
+function startOfDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function endOfDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999); }
+function between(dt, from, to){ return dt >= from && dt <= to; }
 
 function classifyHighlight(dt){
   if(!(dt instanceof Date)) return '';
@@ -130,10 +130,6 @@ function classifyHighlight(dt){
   if (between(dt, tomorrowStart, tomorrowEnd)) return 'hl-tomorrow';
   return '';
 }
-
-function startOfDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
-function endOfDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999); }
-function between(dt, from, to){ return dt >= from && dt <= to; }
 
 /* ===== Controls ===== */
 const refreshBtn = document.getElementById('refreshBtn');
@@ -181,77 +177,54 @@ document.getElementById('saveKeys').onclick = () => {
   settingsPanel.style.display = 'none';
   location.reload();
 };
+
+/* Your provided FMP key used as default if nothing is saved */
+const DEFAULT_FMP_KEY = "cGwxBRZDZj42hUJaH8vJrOuKE1udi8F0";
 function loadKeys(){
   return {
-    fmpKey: localStorage.getItem('sachin:fmpKey') || '',
+    fmpKey: localStorage.getItem('sachin:fmpKey') || DEFAULT_FMP_KEY,
     teKey:  localStorage.getItem('sachin:teKey')  || '',
   };
 }
 
 /* ===== UI helpers ===== */
-const WATCHLIST = ["HOOD", "NVDA", "PLTR", "AMD", "AAPL", "GOOG", "TSLA", "TSM", "AVGO", "MSFT", "ARM", "AMZN", "SPXL", "TQQQ", "SMCI", "COIN", "AI", "WMT", "META", "NFLX", "COST", "LOW", "TGT", "CSCO", "CRWV"];
+/* Added CRWV, CSCO to watchlist */
+const WATCHLIST = ["HOOD","NVDA","PLTR","AMD","AAPL","GOOG","TSLA","TSM","AVGO","MSFT","ARM","AMZN","SPXL","TQQQ","SMCI","COIN","AI","WMT","META","NFLX","COST","LOW","TGT","CRWV","CSCO"];
 
 const upcomingEl = document.getElementById('upcomingList');
 const specialEl  = document.getElementById('specialList');
 const liveBanner = document.getElementById('liveBanner');
-function linkRow(ticker){
-  const y = `https://finance.yahoo.com/quote/${encodeURIComponent(ticker)}`;
-  const tv = `https://www.tradingview.com/symbols/${encodeURIComponent(ticker)}`;
-  return `
-    <span>📈 <strong>${ticker}</strong></span>
-    <a href="${y}" target="_blank" rel="noopener">Yahoo</a>
-    <span>·</span>
-    <a href="${tv}" target="_blank" rel="noopener">TradingView</a>
-  `;
-}
+
 function addPill({text, date, kind, sales=false, ticker}){
   const pill = document.createElement('div');
   pill.className = 'pill' + (sales ? ' sales' : '');
   const d = date ? new Date(date+'T00:00:00') : null;
   if (d){ const hl = classifyHighlight(d); if (hl) pill.classList.add(hl); }
-  const main = text || (ticker ? `${ticker} • ${date} • ${kind||''}` : '');
-  pill.innerHTML = (sales ? '🛒 ' : '📈 ') + main + (ticker ? ` <span style="opacity:.6;">|</span> ${linkRow(ticker)}` : '');
+  // No external links; show ticker + date (for clarity)
+  const main = text || (ticker ? `${ticker}${date ? ' • '+date : ''}${kind ? ' • '+kind : ''}` : '');
+  pill.innerHTML = (sales ? '🛒 ' : '📈 ') + main;
   upcomingEl.appendChild(pill);
 }
 
-/* ===== Specials: OPEX & VIX Expiration (strict 14 days) ===== */
-
-function thirdFriday(y, m){ // m: 0-11
+/* ===== Specials: OPEX & VIX Settlement (strict 14 days) ===== */
+function thirdFriday(y, m){
   const first = new Date(y, m, 1);
-  let day = 1 + ((5 - first.getDay() + 7) % 7); // first Friday
-  day += 14; // third Friday
-  return new Date(y, m, day);
+  const firstFri = 1 + ((5 - first.getDay() + 7) % 7);
+  return new Date(y, m, firstFri + 14);
 }
-function wednesdayBefore(date){
-  const d = new Date(date);
-  while (d.getDay() !== 3) d.setDate(d.getDate()-1); // 3 = Wed
-  return d;
-}
-function tuesdayBefore(date){
-  const d = wednesdayBefore(date);
-  d.setDate(d.getDate()-1); // Tuesday before settlement
-  return d;
-}
+function within48h(dt){ const diff = dt - tzNow(); return diff >= 0 && diff <= 2*DAY; }
 
 function renderSpecials(){
-  const y = now.getFullYear(), m = now.getMonth(); // current month index
-  const months = [m-1, m, m+1]; // cover window straddles within 14 days
+  const y = now.getFullYear(), m = now.getMonth();
+  const months = [m-1, m, m+1];
 
-  function thirdFriday(y, m){ // m: 0-11
-    const first = new Date(y, m, 1);
-    const firstFri = 1 + ((5 - first.getDay() + 7) % 7);
-    return new Date(y, m, firstFri + 14); // 3rd Friday
-  }
-
-  // VIX monthly settlement (SOQ) = Wednesday that's 30 calendar days before next month's 3rd Friday
   function vixMonthlySettlement(y, m){
     const nextMonth = (m + 1 + 12) % 12;
     const yearAdj = y + Math.floor((m + 1) / 12);
     const thirdFriNext = thirdFriday(yearAdj, nextMonth);
     const settle = new Date(thirdFriNext);
     settle.setDate(settle.getDate() - 30);
-    // Normalize to Wednesday (spec implies Wednesday; this guards against oddities):
-    while (settle.getDay() !== 3) { // 3 = Wed
+    while (settle.getDay() !== 3) {
       const diff = (3 - settle.getDay());
       settle.setDate(settle.getDate() + diff);
     }
@@ -261,7 +234,6 @@ function renderSpecials(){
   months.forEach(mm => {
     const mmN = (mm + 12) % 12, yN = y + Math.floor(mm / 12);
 
-    // Monthly OPEX (3rd Friday of current iterated month)
     const opex = thirdFriday(yN, mmN);
     if (between(opex, from, to)){
       const pill1 = document.createElement('div');
@@ -271,7 +243,6 @@ function renderSpecials(){
       specialEl.appendChild(pill1);
     }
 
-    // VIX Settlement aligned to the NEXT month per Cboe spec
     const vixSettle = vixMonthlySettlement(yN, mmN);
     if (between(vixSettle, from, to)){
       const pill2 = document.createElement('div');
@@ -284,13 +255,7 @@ function renderSpecials(){
 }
 renderSpecials();
 
-
-
-
-
-/* Optional local SALES placeholders (keep empty unless you add a date):
-   Example: { ticker:'AAPL', date:'2025-09-10', kind:'Sales report' }
-*/
+/* Optional local SALES placeholders */
 const SALES_LOCAL = [];
 
 /* ===== LIVE Providers ===== */
@@ -301,9 +266,10 @@ async function fetchEarningsFMP(fromISO, toISO, tickers){
   const r = await fetch(url);
   if (!r.ok) throw new Error('FMP error: '+r.status);
   const data = await r.json();
-  const wanted = new Set(WATCHLIST);
+  const wanted = new Set((tickers || []).map(s => s.toUpperCase()));
   return data
     .filter(x => x.symbol && x.date)
+    .filter(x => wanted.size ? wanted.has(String(x.symbol).toUpperCase()) : true)
     .filter(x => { const d = new Date(x.date+'T00:00:00'); return between(d, from, to); })
     .map(x => ({ ticker: x.symbol, date: x.date, kind: 'Earnings' }));
 }
@@ -348,11 +314,10 @@ function renderEcon(list, mount){
 /* ===== Bootstrap: Earnings + Econ (strict 14 days) ===== */
 (async function main(){
   const fromISO = fmtDateISO(from), toISO = fmtDateISO(to);
-  const core = WATCHLIST;
-  let usedLive = false;
-  let econLiveUsed = false;
+  const core = WATCHLIST.slice(); // include CRWV, CSCO
+  let usedLive = false, econLiveUsed = false;
 
-  // LIVE earnings
+  // LIVE earnings (watchlist only, no links)
   try{
     const earn = await fetchEarningsFMP(fromISO, toISO, core);
     const coreOrder = { 'TSLA':0,'AAPL':1,'MSFT':2,'NVDA':3 };
@@ -370,10 +335,8 @@ function renderEcon(list, mount){
   // Fallback sample if none
   if (upcomingEl.children.length === 0){
     const sample = [
-      { t:'TSLA', date:'2025-08-28', kind:'Deliveries/Sales', sales:true },
-      { t:'AAPL', date:'2025-09-10', kind:'Sales report' },
-      { t:'MSFT', date:'2025-10-29', kind:'Earnings' },
       { t:'NVDA', date:'2025-08-27', kind:'Earnings' },
+      { t:'TSLA', date:'2025-08-28', kind:'Deliveries/Sales', sales:true },
     ].filter(s => { const d=new Date(s.date+'T00:00:00'); return between(d, from, to); });
     sample.forEach(s => addPill({ticker:s.t, date:s.date, kind:s.kind, sales:!!s.sales}));
   }
@@ -389,38 +352,13 @@ function renderEcon(list, mount){
     if (teThis.length || teNext.length) econLiveUsed = true;
   }catch(e){ console.warn(e); }
 
-  // Fallback sample econ if empty after filter
-  if (!thisWeekList.children.length && !nextWeekList.children.length){
-    const dt = (y,m,d,hr,mi)=> new Date(y,m-1,d,hr,mi);
-    const all = [
-      { name:'CPI (Jul)',     when: dt(2025,8,12,7,30), src:'BLS' },
-      { name:'PPI (Jul)',     when: dt(2025,8,14,7,30), src:'BLS' },
-      { name:'Initial Jobless Claims', when: dt(2025,8,14,7,30), src:'DOL' },
-      { name:'PCE Price Index (Jul)',  when: dt(2025,8,15,7,30), src:'BEA' },
-      { name:'Nonfarm Payrolls (Jul)', when: dt(2025,8,15,7,30), src:'BLS' },
-      { name:'Fed Chair Powell — FOMC Remarks', when: dt(2025,8,15,13,0), src:'Federal Reserve' },
-      { name:'CPI (Aug)',     when: dt(2025,8,19,7,30), src:'BLS' },
-      { name:'PPI (Aug)',     when: dt(2025,8,21,7,30), src:'BLS' },
-      { name:'Initial Jobless Claims', when: dt(2025,8,21,7,30), src:'DOL' },
-      { name:'PCE Price Index (Aug)',  when: dt(2025,8,22,7,30), src:'BEA' },
-      { name:'Nonfarm Payrolls (Aug)', when: dt(2025,8,22,7,30), src:'BLS' },
-      { name:'Fed Chair Powell — Economic Symposium', when: dt(2025,8,23,9,0), src:'Federal Reserve' },
-    ].filter(ev => between(ev.when, from, to));
-    // split into week buckets for display
-    const wk1 = all.filter(ev => ev.when <= thisSun);
-    const wk2 = all.filter(ev => ev.when >= nextMon);
-    renderEcon(wk1, thisWeekList);
-    renderEcon(wk2, nextWeekList);
-  }
-
   // Live banner
-  if (usedLive || econLiveUsed){
-    liveBanner.style.display = 'block';
-    liveBanner.textContent = `LIVE mode: ${usedLive ? 'Earnings' : ''}${(usedLive && econLiveUsed)?' + ':''}${econLiveUsed ? 'Economic calendar' : ''} (strict 14-day window).`;
-  }else{
-    liveBanner.style.display = 'block';
-    liveBanner.innerHTML = `Using sample data (filtered to 14 days). <span class="error">Set API keys (⚙️) for live updates.</span>`;
-  }
+  const parts = [];
+  if (usedLive) parts.push('Earnings');
+  if (econLiveUsed) parts.push('Economic calendar');
+  liveBanner.style.display = 'block';
+  liveBanner.innerHTML = parts.length ? `LIVE mode: ${parts.join(' + ')} (strict 14-day window).` :
+    `Using sample data (filtered to 14 days). <span class="error">Set API keys (⚙️) for live updates.</span>`;
 })();
 </script>
 
@@ -433,6 +371,5 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
-
 </body>
 </html>
