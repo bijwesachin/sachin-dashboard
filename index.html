@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Sachin Dashboard — v1.9 (Local JSON)</title>
-<meta name="description" content="LIVE dashboard using local earnings.json for earnings; TradingEconomics for econ; strict 14-day window." />
+<title>Sachin Dashboard — v1.9.1 (Local JSON + Econ Fallback)</title>
+<meta name="description" content="Dashboard using local earnings.json for earnings; TradingEconomics for econ with local fallback; strict 14-day window." />
 <link rel="manifest" href="manifest.webmanifest" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -37,7 +37,7 @@
   .settings label{font-size:.9rem;opacity:.9}
   .banner{margin:12px 0;padding:10px;border-radius:10px;background:#21160f;border:1px dashed #5d4b33}
   .error{color:#ffcccc}
-  /* highlights you wanted */
+  /* highlight rules */
   .hl-today{ background:#1f3b2a; border-color:#2f7a4a; }      /* light green */
   .hl-tomorrow{ background:#3a2a15; border-color:#a86e1a; }   /* light orange */
 </style>
@@ -46,7 +46,7 @@
 <header>
   <div class="title">
     <div style="font-weight:900;">Sachin Dashboard</div>
-    <span class="badge">v1.9 · Local earnings.json · 14-day</span>
+    <span class="badge">v1.9.1 · Local earnings.json + Econ fallback · 14-day</span>
   </div>
   <div class="controls">
     <button id="toggleNextWeek">Show next week</button>
@@ -68,7 +68,7 @@
     <div class="card">
       <h3>Specials (next 14 days)</h3>
       <div id="specialList" class="chips"></div>
-      <div class="section-note">Monthly OPEX & VIX Settlement (SOQ) shown only if inside the next 14 days.</div>
+      <div class="section-note">Monthly OPEX &amp; VIX Settlement (AM SOQ) shown only if inside the next 14 days.</div>
     </div>
   </div>
 
@@ -193,7 +193,6 @@ function within48h(dt){ const diff = dt - tzNow(); return diff >= 0 && diff <= 2
 /* ===== Earnings: Local JSON only (no external API) ===== */
 async function fetchEarningsLocal(fromISO, toISO, tickers){
   try{
-    // network-first to keep it fresh; SW also handles network-first for this file
     const res = await fetch('./data/earnings.json', { cache: 'no-store' });
     if(!res.ok) throw new Error('earnings.json missing');
     const rows = await res.json();
@@ -211,7 +210,7 @@ async function fetchEarningsLocal(fromISO, toISO, tickers){
   }
 }
 
-/* ===== Economic Calendar: TradingEconomics (optional key) ===== */
+/* ===== Economic Calendar: TE with local fallback ===== */
 const HIGH_IMPACT = ['CPI','PPI','Initial Jobless Claims','PCE','Non Farm Payrolls','Fed','FOMC','Powell'];
 function pickEventDate(obj){
   const cands=[obj.Date,obj.DateUTC,obj.PubTime,obj.LastUpdate,obj.datetime,obj.date].filter(Boolean);
@@ -234,8 +233,40 @@ async function fetchEconTE(d1,d2){
             .filter(x => x.when && isHighImpactUS(x))
             .filter(x => between(x.when, from, to));
 }
+async function fetchEconLocal(){
+  try{
+    const res = await fetch('./data/econ.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('econ.json missing');
+    const rows = await res.json();
+    return (rows || [])
+      .map(ev => {
+        const iso = ev.date + 'T' + (ev.time ? ev.time : '12:00') + ':00';
+        const when = new Date(iso);
+        return { name: ev.name || ev.title, when, src: 'Local', Country: ev.country || 'United States' };
+      })
+      .filter(x => x.name && x.when && isHighImpactUS(x))
+      .filter(x => between(x.when, from, to));
+  }catch(e){
+    console.warn(e);
+    return [];
+  }
+}
+async function fetchEconMerged(d1, d2){
+  try{
+    const te = await fetchEconTE(d1, d2);
+    if (te.length) return te;
+  }catch(e){ console.warn('TE failed:', e); }
+  return await fetchEconLocal();
+}
 function renderEcon(list, mount){
   mount.innerHTML = ''; list.sort((a,b)=>a.when-b.when);
+  if (!list.length){
+    const row = document.createElement('div');
+    row.className = 'ev';
+    row.innerHTML = `<div class="row"><div><strong>No high-impact events found</strong><br><small>Add items in <code>/data/econ.json</code> or set a TE key (⚙️).</small></div></div>`;
+    mount.appendChild(row);
+    return;
+  }
   list.forEach(ev=>{
     const row=document.createElement('div'); row.className='ev';
     const hl=classifyHighlight(ev.when); if(hl) row.classList.add(hl);
@@ -265,19 +296,19 @@ function renderEcon(list, mount){
     [{ticker:'NVDA',date:fmtDateISO(addDays(now,2)),kind:'Earnings'}].forEach(addPill);
   }
 
-  // ECON (TradingEconomics)
+  // ECON: merged (TE → local fallback)
   try{
-    const teThis = await fetchEconTE(fmtDateISO(thisMon), fmtDateISO(thisSun));
-    const teNext = await fetchEconTE(fmtDateISO(nextMon), fmtDateISO(nextSun));
+    const teThis = await fetchEconMerged(fmtDateISO(thisMon), fmtDateISO(thisSun));
+    const teNext = await fetchEconMerged(fmtDateISO(nextMon), fmtDateISO(nextSun));
     renderEcon(teThis, thisWeekList);
     renderEcon(teNext, nextWeekList);
     if (teThis.length || teNext.length) econUsed=true;
   }catch(e){ console.warn(e); }
 
-  // Live banner
-  const parts=[]; if(earningsUsed) parts.push('Earnings (local JSON)'); if(econUsed) parts.push('Economic calendar (TradingEconomics)');
+  // Banner
+  const parts=[]; if(earningsUsed) parts.push('Earnings (local JSON)'); if(econUsed) parts.push('Economic calendar (TE/Local)');
   const txt = parts.length ? `LIVE: ${parts.join(' + ')} (14-day window).` :
-    `Using sample earnings. <span class="error">Add <code>/data/earnings.json</code> for live chips.</span>`;
+    `Using local earnings and no econ found. <span class="error">Add /data/econ.json or set TE key (⚙️).</span>`;
   liveBanner.style.display='block';
   liveBanner.innerHTML = txt;
 })();

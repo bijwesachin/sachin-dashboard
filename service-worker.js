@@ -1,11 +1,10 @@
-const CACHE_NAME = 'sachin-dash-v1.9-localjson';
+const CACHE_NAME = 'sachin-dash-v1.9.1-localjson';
 const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
   './icons/icon-180.png',
-  './icons/icon-512.png',
-  // do NOT pre-cache earnings.json to avoid staleness; we’ll fetch it network-first
+  './icons/icon-512.png'
 ];
 
 self.addEventListener('install', (e) => {
@@ -21,7 +20,7 @@ self.addEventListener('activate', (e) => {
 });
 
 function isDynamic(url) {
-  return url.includes('/data/earnings.json') || url.includes('tradingeconomics.com');
+  return url.includes('/data/earnings.json') || url.includes('/data/econ.json') || url.includes('tradingeconomics.com');
 }
 
 self.addEventListener('fetch', (e) => {
